@@ -1,0 +1,4 @@
+"/Users/Sean/Documents/Appcelerator_Custom_Modules/ti-mapbox-gl/module/android/build/generated/java/matise/mapbox/MapboxBootstrap.java"
+"/Users/Sean/Documents/Appcelerator_Custom_Modules/ti-mapbox-gl/module/android/src/matise/mapbox/MapViewProxy.java"
+"/Users/Sean/Documents/Appcelerator_Custom_Modules/ti-mapbox-gl/module/android/src/matise/mapbox/MapboxModule.java"
+"/Users/Sean/Documents/Appcelerator_Custom_Modules/ti-mapbox-gl/module/android/src/matise/mapbox/PointAnnotationProxy.java"

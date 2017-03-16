@@ -2,8 +2,6 @@
 #import <CoreLocation/CoreLocation.h>
 #import <CoreGraphics/CGBase.h>
 
-#import "MGLTypes.h"
-
 NS_ASSUME_NONNULL_BEGIN
 
 /** Defines the area spanned by an `MGLCoordinateBounds`. */
@@ -14,7 +12,10 @@ typedef struct MGLCoordinateSpan {
     CLLocationDegrees longitudeDelta;
 } MGLCoordinateSpan;
 
-/** Creates a new `MGLCoordinateSpan` from the given latitudinal and longitudinal deltas. */
+/**
+ Creates a new `MGLCoordinateSpan` from the given latitudinal and longitudinal
+ deltas.
+ */
 NS_INLINE MGLCoordinateSpan MGLCoordinateSpanMake(CLLocationDegrees latitudeDelta, CLLocationDegrees longitudeDelta) {
     MGLCoordinateSpan span;
     span.latitudeDelta = latitudeDelta;
@@ -22,7 +23,10 @@ NS_INLINE MGLCoordinateSpan MGLCoordinateSpanMake(CLLocationDegrees latitudeDelt
     return span;
 }
 
-/** Returns `YES` if the two coordinate spans represent the same latitudinal change and the same longitudinal change. */
+/**
+ Returns `YES` if the two coordinate spans represent the same latitudinal change
+ and the same longitudinal change.
+ */
 NS_INLINE BOOL MGLCoordinateSpanEqualToCoordinateSpan(MGLCoordinateSpan span1, MGLCoordinateSpan span2) {
     return (span1.latitudeDelta == span2.latitudeDelta &&
             span1.longitudeDelta == span2.longitudeDelta);
@@ -39,7 +43,10 @@ typedef struct MGLCoordinateBounds {
     CLLocationCoordinate2D ne;
 } MGLCoordinateBounds;
 
-/** Creates a new `MGLCoordinateBounds` structure from the given southwest and northeast coordinates. */
+/**
+ Creates a new `MGLCoordinateBounds` structure from the given southwest and
+ northeast coordinates.
+ */
 NS_INLINE MGLCoordinateBounds MGLCoordinateBoundsMake(CLLocationCoordinate2D sw, CLLocationCoordinate2D ne) {
     MGLCoordinateBounds bounds;
     bounds.sw = sw;
@@ -55,13 +62,32 @@ NS_INLINE BOOL MGLCoordinateBoundsEqualToCoordinateBounds(MGLCoordinateBounds bo
             bounds1.ne.longitude == bounds2.ne.longitude);
 }
 
+/** Returns `YES` if the two coordinate bounds intersect. */
+NS_INLINE BOOL MGLCoordinateBoundsIntersectsCoordinateBounds(MGLCoordinateBounds bounds1, MGLCoordinateBounds bounds2) {
+    return (bounds1.ne.latitude  > bounds2.sw.latitude  &&
+            bounds1.sw.latitude  < bounds2.ne.latitude  &&
+            bounds1.ne.longitude > bounds2.sw.longitude &&
+            bounds1.sw.longitude < bounds2.ne.longitude);
+}
+
+/** Returns `YES` if the coordinate is within the coordinate bounds. */
+NS_INLINE BOOL MGLCoordinateInCoordinateBounds(CLLocationCoordinate2D coordinate, MGLCoordinateBounds bounds) {
+    return (coordinate.latitude  >= bounds.sw.latitude  &&
+            coordinate.latitude  <= bounds.ne.latitude  &&
+            coordinate.longitude >= bounds.sw.longitude &&
+            coordinate.longitude <= bounds.ne.longitude);
+}
+
 /** Returns the area spanned by the coordinate bounds. */
 NS_INLINE MGLCoordinateSpan MGLCoordinateBoundsGetCoordinateSpan(MGLCoordinateBounds bounds) {
     return MGLCoordinateSpanMake(bounds.ne.latitude - bounds.sw.latitude,
                                  bounds.ne.longitude - bounds.sw.longitude);
 }
 
-/** Returns a coordinate bounds with southwest and northeast coordinates that are offset from those of the source bounds. */
+/**
+ Returns a coordinate bounds with southwest and northeast coordinates that are
+ offset from those of the source bounds.
+ */
 NS_INLINE MGLCoordinateBounds MGLCoordinateBoundsOffset(MGLCoordinateBounds bounds, MGLCoordinateSpan offset) {
     MGLCoordinateBounds offsetBounds = bounds;
     offsetBounds.sw.latitude += offset.latitudeDelta;
@@ -71,8 +97,12 @@ NS_INLINE MGLCoordinateBounds MGLCoordinateBoundsOffset(MGLCoordinateBounds boun
     return offsetBounds;
 }
 
-/** Returns `YES` if the coordinate bounds covers no area.
-  Note that a bounds may be empty but have a non-zero coordinate span (e.g., when its northeast point lies due north of its southwest point). */
+/**
+ Returns `YES` if the coordinate bounds covers no area.
+ 
+ @note A bounds may be empty but have a non-zero coordinate span (e.g., when its
+    northeast point lies due north of its southwest point).
+ */
 NS_INLINE BOOL MGLCoordinateBoundsIsEmpty(MGLCoordinateBounds bounds) {
     MGLCoordinateSpan span = MGLCoordinateBoundsGetCoordinateSpan(bounds);
     return span.latitudeDelta == 0 || span.longitudeDelta == 0;

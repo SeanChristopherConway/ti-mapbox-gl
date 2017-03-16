@@ -8,18 +8,33 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@class MGLAnnotationView;
 @class MGLAnnotationImage;
 @class MGLUserLocation;
 @class MGLPolyline;
 @class MGLPolygon;
 @class MGLShape;
+@class MGLStyle;
 
 @protocol MGLMapViewDelegate;
 @protocol MGLAnnotation;
 @protocol MGLOverlay;
 @protocol MGLCalloutView;
+@protocol MGLFeature;
 
-/** The vertical alignment of an annotation within a map view. */
+/** The default deceleration rate for a map view. */
+extern const CGFloat MGLMapViewDecelerationRateNormal;
+
+/** A fast deceleration rate for a map view. */
+extern const CGFloat MGLMapViewDecelerationRateFast;
+
+/** Disables deceleration in a map view. */
+extern const CGFloat MGLMapViewDecelerationRateImmediate;
+
+/**
+ The vertical alignment of an annotation within a map view. Used with
+ `MGLMapView.userLocationVerticalAlignment`.
+ */
 typedef NS_ENUM(NSUInteger, MGLAnnotationVerticalAlignment) {
     /** Aligns the annotation vertically in the center of the map view. */
     MGLAnnotationVerticalAlignmentCenter = 0,
@@ -29,23 +44,9 @@ typedef NS_ENUM(NSUInteger, MGLAnnotationVerticalAlignment) {
     MGLAnnotationVerticalAlignmentBottom,
 };
 
-/** Options for enabling debugging features in an MGLMapView instance. */
-typedef NS_OPTIONS(NSUInteger, MGLMapDebugMaskOptions) {
-    /** Edges of tile boundaries are shown as thick, red lines to help diagnose
-        tile clipping issues. */
-    MGLMapDebugTileBoundariesMask = 1 << 1,
-    /** Each tile shows its tile coordinate (x/y/z) in the upper-left corner. */
-    MGLMapDebugTileInfoMask = 1 << 2,
-    /** Each tile shows a timestamp indicating when it was loaded. */
-    MGLMapDebugTimestampsMask = 1 << 3,
-    /** Edges of glyphs and symbols are shown as faint, green lines to help
-        diagnose collision and label placement issues. */
-    MGLMapDebugCollisionBoxesMask = 1 << 4,
-};
-
 /**
  An interactive, customizable map view with an interface similar to the one
- provided by Apple's MapKit.
+ provided by Apple’s MapKit.
  
  Using `MGLMapView`, you can embed the map inside a view, allow users to
  manipulate it with standard gestures, animate the map between different
@@ -54,7 +55,7 @@ typedef NS_OPTIONS(NSUInteger, MGLMapDebugMaskOptions) {
  The map view loads scalable vector tiles that conform to the
  <a href="https://github.com/mapbox/vector-tile-spec">Mapbox Vector Tile Specification</a>.
  It styles them with a style that conforms to the
- <a href="https://www.mapbox.com/mapbox-gl-style-spec/">Mapbox GL style specification</a>.
+ <a href="https://www.mapbox.com/mapbox-gl-style-spec/">Mapbox Style Specification</a>.
  Such styles can be designed in
  <a href="https://www.mapbox.com/studio/">Mapbox Studio</a> and hosted on
  mapbox.com.
@@ -68,12 +69,27 @@ typedef NS_OPTIONS(NSUInteger, MGLMapDebugMaskOptions) {
  Mapbox-hosted vector tiles and styles require an API access token, which you
  can obtain from the
  <a href="https://www.mapbox.com/studio/account/tokens/">Mapbox account page</a>.
- Access tokens associate requests to Mapbox's vector tile and style APIs with
+ Access tokens associate requests to Mapbox’s vector tile and style APIs with
  your Mapbox account. They also deter other developers from using your styles
  without your permission.
  
+ Adding your own gesture recognizer to `MGLMapView` will block the corresponding
+ gesture recognizer built into `MGLMapView`. To avoid conflicts, define which
+ gesture takes precedence. For example, you can create your own
+ `UITapGestureRecognizer` that will be invoked only if the default `MGLMapView`
+ tap gesture fails:
+ 
+ ```swift
+ let mapTapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(myCustomFunction))
+ for recognizer in mapView.gestureRecognizers! where recognizer is UITapGestureRecognizer {
+     mapTapGestureRecognizer.require(toFail: recognizer)
+ }
+ mapView.addGestureRecognizer(mapTapGestureRecognizer)
+ ```
+ 
  @note You are responsible for getting permission to use the map data and for
  ensuring that your use adheres to the relevant terms of use.
+
  */
 IB_DESIGNABLE
 @interface MGLMapView : UIView
@@ -95,9 +111,9 @@ IB_DESIGNABLE
  
  @param frame The frame for the view, measured in points.
  @param styleURL URL of the map style to display. The URL may be a full HTTP
-    or HTTPS URL, a Mapbox URL indicating the style's map ID
+    or HTTPS URL, a Mapbox URL indicating the style’s map ID
     (`mapbox://styles/{user}/{style}`), or a path to a local file relative
-    to the application's resource path. Specify `nil` for the default style.
+    to the application’s resource path. Specify `nil` for the default style.
  @return An initialized map view.
  */
 - (instancetype)initWithFrame:(CGRect)frame styleURL:(nullable NSURL *)styleURL;
@@ -105,7 +121,7 @@ IB_DESIGNABLE
 #pragma mark Accessing the Delegate
 
 /**
- The receiver's delegate.
+ The receiver’s delegate.
  
  A map view sends messages to its delegate to notify it of changes to its
  contents or the viewpoint. The delegate also provides information about
@@ -114,7 +130,29 @@ IB_DESIGNABLE
  */
 @property(nonatomic, weak, nullable) IBOutlet id<MGLMapViewDelegate> delegate;
 
-#pragma mark Configuring the Map's Appearance
+#pragma mark Configuring the Map’s Appearance
+
+/**
+ The style currently displayed in the receiver.
+ 
+ Unlike the `styleURL` property, this property is set to an object that allows
+ you to manipulate every aspect of the style locally.
+ 
+ If the style is loading, this property is set to `nil` until the style finishes
+ loading. If the style has failed to load, this property is set to `nil`.
+ Because the style loads asynchronously, you should manipulate it in the
+ `-[MGLMapViewDelegate mapView:didFinishLoadingStyle:]` or
+ `-[MGLMapViewDelegate mapViewDidFinishLoadingMap:]` method. It is not possible
+ to manipulate the style before it has finished loading.
+ 
+ @note The default styles provided by Mapbox contain sources and layers with
+    identifiers that will change over time. Applications that use APIs that
+    manipulate a style's sources and layers must first set the style URL to an
+    explicitly versioned style using a convenience method like
+    `+[MGLStyle outdoorsStyleURLWithVersion:]`, `MGLMapView`'s “Style URL”
+    inspectable in Interface Builder, or a manually constructed `NSURL`.
+ */
+@property (nonatomic, readonly, nullable) MGLStyle *style;
 
 /**
  URLs of the styles bundled with the library.
@@ -127,17 +165,34 @@ IB_DESIGNABLE
 /**
  URL of the style currently displayed in the receiver.
  
- The URL may be a full HTTP or HTTPS URL, a Mapbox URL indicating the style's
+ The URL may be a full HTTP or HTTPS URL, a Mapbox URL indicating the style’s
  map ID (`mapbox://styles/{user}/{style}`), or a path to a local file
- relative to the application's resource path.
+ relative to the application’s resource path.
  
  If you set this property to `nil`, the receiver will use the default style
- and this property will automatically be set to that style's URL.
+ and this property will automatically be set to that style’s URL.
+ 
+ If you want to modify the current style without replacing it outright, or if
+ you want to introspect individual style attributes, use the `style` property.
  */
 @property (nonatomic, null_resettable) NSURL *styleURL;
 
 /**
- A control indicating the map's direction and allowing the user to manipulate
+ Reloads the style.
+ 
+ You do not normally need to call this method. The map view automatically
+ responds to changes in network connectivity by reloading the style. You may
+ need to call this method if you change the access token after a style has
+ loaded but before loading a style associated with a different Mapbox account.
+ 
+ This method does not bust the cache. Even if the style has recently changed on
+ the server, calling this method does not necessarily ensure that the map view
+ reflects those changes.
+ */
+- (IBAction)reloadStyle:(id)sender;
+
+/**
+ A control indicating the map’s direction and allowing the user to manipulate
  the direction, positioned in the upper-right corner.
  */
 @property (nonatomic, readonly) UIImageView *compassView;
@@ -175,46 +230,26 @@ IB_DESIGNABLE
  */
 @property (nonatomic, readonly) UIButton *attributionButton;
 
-/** 
- Currently active style classes, represented as an array of string identifiers.
- */
-@property (nonatomic) NS_ARRAY_OF(NSString *) *styleClasses;
+@property (nonatomic) NS_ARRAY_OF(NSString *) *styleClasses __attribute__((deprecated("Use style.styleClasses.")));
 
-/**
- Returns a Boolean value indicating whether the style class with the given
- identifier is currently active.
- 
- @param styleClass The style class to query for.
- @return Whether the style class is currently active.
- */
-- (BOOL)hasStyleClass:(NSString *)styleClass;
+- (BOOL)hasStyleClass:(NSString *)styleClass __attribute__((deprecated("Use style.hasStyleClass:.")));
 
-/**
- Activates the style class with the given identifier.
- 
- @param styleClass The style class to activate.
- */
-- (void)addStyleClass:(NSString *)styleClass;
+- (void)addStyleClass:(NSString *)styleClass __attribute__((deprecated("Use style.addStyleClass:.")));
 
-/**
- Deactivates the style class with the given identifier.
- 
- @param styleClass The style class to deactivate.
- */
-- (void)removeStyleClass:(NSString *)styleClass;
+- (void)removeStyleClass:(NSString *)styleClass __attribute__((deprecated("Use style.removeStyleClass:.")));
 
-#pragma mark Displaying the User's Location
+#pragma mark Displaying the User’s Location
 
 /**
  A Boolean value indicating whether the map may display the user location.
  
  Setting this property to `YES` causes the map view to use the Core Location
  framework to find the current location. As long as this property is `YES`, the
- map view continues to track the user's location and update it periodically.
+ map view continues to track the user’s location and update it periodically.
  
- This property does not indicate whether the user's position is actually visible
+ This property does not indicate whether the user’s position is actually visible
  on the map, only whether the map view is allowed to display it. To determine
- whether the user's position is visible, use the `userLocationVisible` property.
+ whether the user’s position is visible, use the `userLocationVisible` property.
  The default value of this property is `NO`.
  
  On iOS 8 and above, your app must specify a value for
@@ -225,7 +260,7 @@ IB_DESIGNABLE
 @property (nonatomic, assign) BOOL showsUserLocation;
 
 /** 
- A Boolean value indicating whether the device's current location is visible in
+ A Boolean value indicating whether the device’s current location is visible in
  the map view.
  
  Use `showsUserLocation` to control the visibility of the on-screen user
@@ -234,7 +269,7 @@ IB_DESIGNABLE
 @property (nonatomic, assign, readonly, getter=isUserLocationVisible) BOOL userLocationVisible;
 
 /**
- Returns the annotation object indicating the user's current location.
+ Returns the annotation object indicating the user’s current location.
  */
 @property (nonatomic, readonly, nullable) MGLUserLocation *userLocation;
 
@@ -383,6 +418,17 @@ IB_DESIGNABLE
  The default value of this property is `YES`.
  */
 @property(nonatomic, getter=isPitchEnabled) BOOL pitchEnabled;
+
+/**
+ A floating-point value that determines the rate of deceleration after the user
+ lifts their finger.
+
+ Your application can use the `MGLMapViewDecelerationRateNormal` and
+ `MGLMapViewDecelerationRateFast` constants as reference points for reasonable
+ deceleration rates. `MGLMapViewDecelerationRateImmediate` can be used to
+ disable deceleration entirely.
+ */
+@property(nonatomic) CGFloat decelerationRate;
 
 #pragma mark Manipulating the Viewpoint
 
@@ -534,7 +580,15 @@ IB_DESIGNABLE
 - (IBAction)resetNorth;
 
 /**
- The coordinate bounds visible in the receiver's viewport.
+ Resets the map to the current style’s default viewport.
+ 
+ If the style doesn’t specify a default viewport, the map resets to a minimum
+ zoom level, a center coordinate of (0, 0), and a northern heading.
+ */
+- (IBAction)resetPosition;
+
+/**
+ The coordinate bounds visible in the receiver’s viewport.
  
  Changing the value of this property updates the receiver immediately. If you
  want to animate the change, call `-setVisibleCoordinateBounds:animated:`
@@ -553,7 +607,7 @@ IB_DESIGNABLE
 - (void)setVisibleCoordinateBounds:(MGLCoordinateBounds)bounds animated:(BOOL)animated;
 
 /**
- Changes the receiver's viewport to fit the given coordinate bounds and
+ Changes the receiver’s viewport to fit the given coordinate bounds and
  optionally some additional padding on each side.
  
  @param bounds The bounds that the viewport will show in its entirety.
@@ -565,7 +619,7 @@ IB_DESIGNABLE
 - (void)setVisibleCoordinateBounds:(MGLCoordinateBounds)bounds edgePadding:(UIEdgeInsets)insets animated:(BOOL)animated;
 
 /**
- Changes the receiver's viewport to fit all of the given coordinates and
+ Changes the receiver’s viewport to fit all of the given coordinates and
  optionally some additional padding on each side.
  
  @param coordinates The coordinates that the viewport will show.
@@ -576,10 +630,10 @@ IB_DESIGNABLE
  @param animated Specify `YES` to animate the change by smoothly scrolling and
     zooming or `NO` to immediately display the given bounds.
  */
-- (void)setVisibleCoordinates:(CLLocationCoordinate2D *)coordinates count:(NSUInteger)count edgePadding:(UIEdgeInsets)insets animated:(BOOL)animated;
+- (void)setVisibleCoordinates:(const CLLocationCoordinate2D *)coordinates count:(NSUInteger)count edgePadding:(UIEdgeInsets)insets animated:(BOOL)animated;
 
 /**
- Changes the receiver's viewport to fit all of the given coordinates and
+ Changes the receiver’s viewport to fit all of the given coordinates and
  optionally some additional padding on each side.
  
  @param coordinates The coordinates that the viewport will show.
@@ -593,7 +647,7 @@ IB_DESIGNABLE
  @param function The timing function to animate the change.
  @param completion The block executed after the animation finishes.
  */
-- (void)setVisibleCoordinates:(CLLocationCoordinate2D *)coordinates count:(NSUInteger)count edgePadding:(UIEdgeInsets)insets direction:(CLLocationDirection)direction duration:(NSTimeInterval)duration animationTimingFunction:(nullable CAMediaTimingFunction *)function completionHandler:(nullable void (^)(void))completion;
+- (void)setVisibleCoordinates:(const CLLocationCoordinate2D *)coordinates count:(NSUInteger)count edgePadding:(UIEdgeInsets)insets direction:(CLLocationDirection)direction duration:(NSTimeInterval)duration animationTimingFunction:(nullable CAMediaTimingFunction *)function completionHandler:(nullable void (^)(void))completion;
 
 /**
  Sets the visible region so that the map displays the specified annotations.
@@ -613,7 +667,7 @@ IB_DESIGNABLE
  Sets the visible region so that the map displays the specified annotations with
  the specified amount of padding on each side.
 
- Calling this method updates the value in the visibleCoordinateBounds property
+ Calling this method updates the value in the `visibleCoordinateBounds` property
  and potentially other properties to reflect the new map region.
 
  @param annotations The annotations that you want to be visible in the map.
@@ -719,6 +773,50 @@ IB_DESIGNABLE
 - (void)flyToCamera:(MGLMapCamera *)camera withDuration:(NSTimeInterval)duration peakAltitude:(CLLocationDistance)peakAltitude completionHandler:(nullable void (^)(void))completion;
 
 /**
+ Returns the camera that best fits the given coordinate bounds.
+ 
+ @param bounds The coordinate bounds to fit to the receiver’s viewport.
+ @return A camera object centered on the same location as the coordinate
+    bounds with zoom level as high (close to the ground) as possible while still
+    including the entire coordinate bounds. The camera object uses the current
+    direction and pitch.
+ */
+- (MGLMapCamera *)cameraThatFitsCoordinateBounds:(MGLCoordinateBounds)bounds;
+
+/**
+ Returns the camera that best fits the given coordinate bounds, optionally with
+ some additional padding on each side.
+ 
+ @param bounds The coordinate bounds to fit to the receiver’s viewport.
+ @param insets The minimum padding (in screen points) that would be visible
+    around the returned camera object if it were set as the receiver’s camera.
+ @return A camera object centered on the same location as the coordinate bounds
+    with zoom level as high (close to the ground) as possible while still
+    including the entire coordinate bounds. The camera object uses the current
+    direction and pitch.
+ */
+- (MGLMapCamera *)cameraThatFitsCoordinateBounds:(MGLCoordinateBounds)bounds edgePadding:(UIEdgeInsets)insets;
+
+/**
+ Returns the point in this view’s coordinate system on which to "anchor" in
+ response to a user-initiated gesture.
+ 
+ For example, a pinch-to-zoom gesture would anchor the map at the midpoint of
+ the pinch.
+ 
+ If the `userTrackingMode` property is not `MGLUserTrackingModeNone`, the
+ user annotation is used as the anchor point.
+ 
+ Subclasses may override this method to provide specialized behavior - for
+ example, anchoring on the map’s center point to provide a "locked" zooming
+ mode.
+ 
+ @param gesture An anchorable user gesture.
+ @return The point on which to anchor in response to the gesture.
+ */
+- (CGPoint)anchorPointForGesture:(UIGestureRecognizer *)gesture;
+
+/**
  The distance from the edges of the map view’s frame to the edges of the map
  view’s logical viewport.
  
@@ -762,7 +860,7 @@ IB_DESIGNABLE
 #pragma mark Converting Geographic Coordinates
 
 /**
- Converts a point in the given view's coordinate system to a geographic
+ Converts a point in the given view’s coordinate system to a geographic
  coordinate.
  
  @param point The point to convert.
@@ -772,13 +870,13 @@ IB_DESIGNABLE
 - (CLLocationCoordinate2D)convertPoint:(CGPoint)point toCoordinateFromView:(nullable UIView *)view;
 
 /**
- Converts a geographic coordinate to a point in the given view's coordinate
+ Converts a geographic coordinate to a point in the given view’s coordinate
  system.
  
  @param coordinate The geographic coordinate to convert.
  @param view The view in whose coordinate system the returned point should be
     expressed. If this parameter is `nil`, the returned point is expressed
-    in the window's coordinate system. If `view` is not `nil`, it must
+    in the window’s coordinate system. If `view` is not `nil`, it must
     belong to the same window as the map view.
  @return The point (in the appropriate view or window coordinate system)
     corresponding to the given geographic coordinate.
@@ -808,7 +906,7 @@ IB_DESIGNABLE
 - (CGRect)convertCoordinateBounds:(MGLCoordinateBounds)bounds toRectToView:(nullable UIView *)view;
 
 /**
- Returns the distance spanned by one point in the map view's coordinate system
+ Returns the distance spanned by one point in the map view’s coordinate system
  at the given latitude and current zoom level.
  
  The distance between points decreases as the latitude approaches the poles.
@@ -835,7 +933,22 @@ IB_DESIGNABLE
 @property (nonatomic, readonly, nullable) NS_ARRAY_OF(id <MGLAnnotation>) *annotations;
 
 /**
+ The complete list of annotations associated with the receiver that are 
+ currently visible.
+ 
+ The objects in this array must adopt the `MGLAnnotation` protocol. If no
+ annotations are associated with the map view or if no annotations associated
+ with the map view are currently visible, the value of this property is `nil`.
+ */
+@property (nonatomic, readonly, nullable) NS_ARRAY_OF(id <MGLAnnotation>) *visibleAnnotations;
+
+/**
  Adds an annotation to the map view.
+ 
+ @note `MGLMultiPolyline`, `MGLMultiPolygon`, `MGLShapeCollection`, and 
+    `MGLPointCollection` objects cannot be added to the map view at this time. 
+    Any multipoint, multipolyline, multipolygon, shape or point collection 
+    object that is specified is silently ignored.
  
  @param annotation The annotation object to add to the receiver. This object
     must conform to the `MGLAnnotation` protocol. The map view retains the
@@ -844,6 +957,12 @@ IB_DESIGNABLE
 
 /**
  Adds an array of annotations to the map view.
+ 
+ @note `MGLMultiPolyline`, `MGLMultiPolygon`, and `MGLShapeCollection` objects
+    cannot be added to the map view at this time. Nor can `MGLMultiPoint`
+    objects that are not instances of `MGLPolyline` or `MGLPolygon`. Any
+    multipoint, multipolyline, multipolygon, or shape collection objects that
+    are specified are silently ignored.
  
  @param annotations An array of annotation objects. Each object in the array
     must conform to the `MGLAnnotation` protocol. The map view retains each
@@ -877,6 +996,15 @@ IB_DESIGNABLE
 - (void)removeAnnotations:(NS_ARRAY_OF(id <MGLAnnotation>) *)annotations;
 
 /**
+ Returns an `MGLAnnotationView` if the given annotation is currently associated
+ with a view, otherwise nil.
+ 
+ @param annotation The annotation associated with the view. 
+    Annotation must conform to the `MGLAnnotation` protocol.
+ */
+- (nullable MGLAnnotationView *)viewForAnnotation:(id <MGLAnnotation>)annotation;
+
+/**
  Returns a reusable annotation image object associated with its identifier.
  
  For performance reasons, you should generally reuse `MGLAnnotationImage`
@@ -890,7 +1018,34 @@ IB_DESIGNABLE
  @return An annotation image object with the given identifier, or `nil` if no
     such object exists in the reuse queue.
  */
-- (nullable MGLAnnotationImage *)dequeueReusableAnnotationImageWithIdentifier:(NSString *)identifier;
+- (nullable __kindof MGLAnnotationImage *)dequeueReusableAnnotationImageWithIdentifier:(NSString *)identifier;
+
+/**
+ Returns a reusable annotation view object associated with its identifier.
+ 
+ For performance reasons, you should generally reuse `MGLAnnotationView`
+ objects for identical-looking annotations in your map views. Dequeueing
+ saves time and memory during performance-critical operations such as
+ scrolling.
+ 
+ @param identifier A string identifying the annotation view to be reused.
+    This string is the same one you specify when initially returning the
+    annotation view object using the `-mapView:viewForAnnotation:` method.
+ @return An annotation view object with the given identifier, or `nil` if no
+    such object exists in the reuse queue.
+ */
+- (nullable __kindof MGLAnnotationView *)dequeueReusableAnnotationViewWithIdentifier:(NSString *)identifier;
+
+/**
+ Returns the list of annotations associated with the receiver that intersect with 
+ the given rectangle.
+ 
+ @param rect A rectangle expressed in the map view’s coordinate system.
+ @return An array of objects that adopt the `MGLAnnotation` protocol or `nil` if
+    no annotations associated with the map view are currently visible in the 
+    rectangle.
+ */
+- (nullable NS_ARRAY_OF(id <MGLAnnotation>) *)visibleAnnotationsInRect:(CGRect)rect;
 
 #pragma mark Managing Annotation Selections
 
@@ -962,6 +1117,148 @@ IB_DESIGNABLE
  */
 - (void)removeOverlays:(NS_ARRAY_OF(id <MGLOverlay>) *)overlays;
 
+#pragma mark Accessing the Underlying Map Data
+
+/**
+ Returns an array of rendered map features that intersect with a given point.
+ 
+ This method may return features from any of the map’s style layers. To restrict
+ the search to a particular layer or layers, use the
+ `-visibleFeaturesAtPoint:inStyleLayersWithIdentifiers:` method. For more
+ information about searching for map features, see that method’s documentation.
+ 
+ @param point A point expressed in the map view’s coordinate system.
+ @return An array of objects conforming to the `MGLFeature` protocol that
+    represent features in the sources used by the current style.
+ */
+- (NS_ARRAY_OF(id <MGLFeature>) *)visibleFeaturesAtPoint:(CGPoint)point NS_SWIFT_NAME(visibleFeatures(at:));
+
+/**
+ Returns an array of rendered map features that intersect with a given point,
+ restricted to the given style layers.
+ 
+ Each object in the returned array represents a feature rendered by the
+ current style and provides access to attributes specified by the relevant
+ <a href="https://www.mapbox.com/mapbox-gl-style-spec/#sources">tile sources</a>.
+ The returned array includes features specified in vector and GeoJSON tile
+ sources but does not include anything from raster, image, or video sources.
+ 
+ Only visible features are returned. For example, suppose the current style uses
+ the
+ <a href="https://www.mapbox.com/vector-tiles/mapbox-streets/">Mapbox Streets source</a>,
+ but none of the specified style layers includes features that have the `maki`
+ property set to `bus`. If you pass a point corresponding to the location of a
+ bus stop into this method, the bus stop feature does not appear in the
+ resulting array. On the other hand, if the style does include bus stops, an
+ `MGLFeature` object representing that bus stop is returned and its
+ `featureAttributes` dictionary has the `maki` key set to `bus` (along with
+ other attributes). The dictionary contains only the attributes provided by the
+ tile source; it does not include computed attribute values or rules about how
+ the feature is rendered by the current style.
+ 
+ The returned array is sorted by z-order, starting with the topmost rendered
+ feature and ending with the bottommost rendered feature. A feature that is
+ rendered multiple times due to wrapping across the antimeridian at low zoom
+ levels is included only once, subject to the caveat that follows.
+ 
+ Features come from tiled vector data or GeoJSON data that is converted to tiles
+ internally, so feature geometries are clipped at tile boundaries and features
+ may appear duplicated across tiles. For example, suppose the specified point
+ lies along a road that spans the screen. The resulting array includes those
+ parts of the road that lie within the map tile that contain the specified
+ point, even if the road extends into other tiles.
+ 
+ To find out the layer names in a particular style, view the style in
+ <a href="https://www.mapbox.com/studio/">Mapbox Studio</a>.
+ 
+ @note Layer identifiers are not guaranteed to exist across styles or different
+    versions of the same style. Applications that use this API must first set the
+    style URL to an explicitly versioned style using a convenience method like
+    `+[MGLStyle outdoorsStyleURLWithVersion:]`, `MGLMapView`'s “Style URL”
+    inspectable in Interface Builder, or a manually constructed `NSURL`. This
+    approach also avoids layer identifer name changes that will occur in the default
+    style’s layers over time.
+ 
+ @param point A point expressed in the map view’s coordinate system.
+ @param styleLayerIdentifiers A set of strings that correspond to the names of
+    layers defined in the current style. Only the features contained in these
+    layers are included in the returned array.
+ @return An array of objects conforming to the `MGLFeature` protocol that
+    represent features in the sources used by the current style.
+ */
+- (NS_ARRAY_OF(id <MGLFeature>) *)visibleFeaturesAtPoint:(CGPoint)point inStyleLayersWithIdentifiers:(nullable NS_SET_OF(NSString *) *)styleLayerIdentifiers NS_SWIFT_NAME(visibleFeatures(at:styleLayerIdentifiers:));
+
+/**
+ Returns an array of rendered map features that intersect with the given
+ rectangle.
+ 
+ This method may return features from any of the map’s style layers. To restrict
+ the search to a particular layer or layers, use the
+ `-visibleFeaturesAtPoint:inStyleLayersWithIdentifiers:` method. For more
+ information about searching for map features, see that method’s documentation.
+ 
+ @param rect A rectangle expressed in the map view’s coordinate system.
+ @return An array of objects conforming to the `MGLFeature` protocol that
+    represent features in the sources used by the current style.
+ */
+- (NS_ARRAY_OF(id <MGLFeature>) *)visibleFeaturesInRect:(CGRect)rect NS_SWIFT_NAME(visibleFeatures(in:));
+
+/**
+ Returns an array of rendered map features that intersect with the given
+ rectangle, restricted to the given style layers.
+ 
+ Each object in the returned array represents a feature rendered by the
+ current style and provides access to attributes specified by the relevant
+ <a href="https://www.mapbox.com/mapbox-gl-style-spec/#sources">tile sources</a>.
+ The returned array includes features specified in vector and GeoJSON tile
+ sources but does not include anything from raster, image, or video sources.
+ 
+ Only visible features are returned. For example, suppose the current style uses
+ the
+ <a href="https://www.mapbox.com/vector-tiles/mapbox-streets/">Mapbox Streets source</a>,
+ but none of the specified style layers includes features that have the `maki`
+ property set to `bus`. If you pass a rectangle containing the location of a bus
+ stop into this method, the bus stop feature does not appear in the resulting
+ array. On the other hand, if the style does include bus stops, an `MGLFeature`
+ object representing that bus stop is returned and its `featureAttributes`
+ dictionary has the `maki` key set to `bus` (along with other attributes). The
+ dictionary contains only the attributes provided by the tile source; it does
+ not include computed attribute values or rules about how the feature is
+ rendered by the current style.
+ 
+ The returned array is sorted by z-order, starting with the topmost rendered
+ feature and ending with the bottommost rendered feature. A feature that is
+ rendered multiple times due to wrapping across the antimeridian at low zoom
+ levels is included only once, subject to the caveat that follows.
+ 
+ Features come from tiled vector data or GeoJSON data that is converted to tiles
+ internally, so feature geometries are clipped at tile boundaries and features
+ may appear duplicated across tiles. For example, suppose the specified
+ rectangle intersects with a road that spans the screen. The resulting array
+ includes those parts of the road that lie within the map tiles covering the
+ specified rectangle, even if the road extends into other tiles. The portion of
+ the road within each map tile is included individually.
+ 
+ To find out the layer names in a particular style, view the style in
+ <a href="https://www.mapbox.com/studio/">Mapbox Studio</a>.
+ 
+ @note Layer identifiers are not guaranteed to exist across styles or different
+    versions of the same style. Applications that use this API must first set the
+    style URL to an explicitly versioned style using a convenience method like
+    `+[MGLStyle outdoorsStyleURLWithVersion:]`, `MGLMapView`'s “Style URL”
+    inspectable in Interface Builder, or a manually constructed `NSURL`. This
+    approach also avoids layer identifer name changes that will occur in the default
+    style’s layers over time.
+ 
+ @param rect A rectangle expressed in the map view’s coordinate system.
+ @param styleLayerIdentifiers A set of strings that correspond to the names of
+    layers defined in the current style. Only the features contained in these
+    layers are included in the returned array.
+ @return An array of objects conforming to the `MGLFeature` protocol that
+    represent features in the sources used by the current style.
+ */
+- (NS_ARRAY_OF(id <MGLFeature>) *)visibleFeaturesInRect:(CGRect)rect inStyleLayersWithIdentifiers:(nullable NS_SET_OF(NSString *) *)styleLayerIdentifiers NS_SWIFT_NAME(visibleFeatures(in:styleLayerIdentifiers:));
+
 #pragma mark Debugging the Map
 
 /**
@@ -976,284 +1273,7 @@ IB_DESIGNABLE
 
 - (void)toggleDebug __attribute__((deprecated("Use -setDebugMask:.")));
 
-/**
-    Empties the in-memory tile cache.
- */
-- (void)emptyMemoryCache;
-
-/**
-    Resets the map to the minimum zoom level, a center coordinate of (0, 0), and
-    a northern heading.
- */
-- (void)resetPosition;
-
-@end
-
-#pragma mark - MGLMapViewDelegate
-
-/** The MGLMapViewDelegate protocol defines a set of optional methods that you can use to receive map-related update messages. Because many map operations require the `MGLMapView` class to load data asynchronously, the map view calls these methods to notify your application when specific operations complete. The map view also uses these methods to request annotation marker symbology and to manage interactions with those markers. */
-@protocol MGLMapViewDelegate <NSObject>
-
-@optional
-
-#pragma mark Responding to Map Position Changes
-
-/**
- Tells the delegate that the region displayed by the map view is about to change.
- 
- This method is called whenever the currently displayed map region will start changing.
- 
- @param mapView The map view whose visible region will change.
- @param animated Whether the change will cause an animated effect on the map.
- */
-- (void)mapView:(MGLMapView *)mapView regionWillChangeAnimated:(BOOL)animated;
-
-/**
- Tells the delegate that the region displayed by the map view is changing.
- 
- This method is called whenever the currently displayed map region changes. During movement, this method may be called many times to report updates to the map position. Therefore, your implementation of this method should be as lightweight as possible to avoid affecting performance.
- 
- @param mapView The map view whose visible region is changing.
- */
-- (void)mapViewRegionIsChanging:(MGLMapView *)mapView;
-
-/**
- Tells the delegate that the region displayed by the map view just changed.
- 
- This method is called whenever the currently displayed map region has finished changing.
- 
- @param mapView The map view whose visible region changed.
- @param animated Whether the change caused an animated effect on the map.
- */
-- (void)mapView:(MGLMapView *)mapView regionDidChangeAnimated:(BOOL)animated;
-
-#pragma mark Loading the Map
-
-/**
- Tells the delegate that the map view will begin to load.
- 
- This method is called whenever the map view starts loading, including when a new style has been set and the map must reload.
- 
- @param mapView The map view that is starting to load.
- */
-- (void)mapViewWillStartLoadingMap:(MGLMapView *)mapView;
-
-/**
- Tells the delegate that the map view has finished loading.
- 
- This method is called whenever the map view finishes loading, either after the initial load or after a style change has forced a reload.
- 
- @param mapView The map view that has finished loading.
- */
-- (void)mapViewDidFinishLoadingMap:(MGLMapView *)mapView;
-
-// TODO
-- (void)mapViewDidFailLoadingMap:(MGLMapView *)mapView withError:(NSError *)error;
-
-// TODO
-- (void)mapViewWillStartRenderingMap:(MGLMapView *)mapView;
-
-// TODO
-- (void)mapViewDidFinishRenderingMap:(MGLMapView *)mapView fullyRendered:(BOOL)fullyRendered;
-
-// TODO
-- (void)mapViewWillStartRenderingFrame:(MGLMapView *)mapView;
-
-// TODO
-- (void)mapViewDidFinishRenderingFrame:(MGLMapView *)mapView fullyRendered:(BOOL)fullyRendered;
-
-#pragma mark Tracking User Location
-
-/**
- Tells the delegate that the map view will begin tracking the user's location.
- 
- This method is called when the value of the `showsUserLocation` property changes to `YES`.
- 
- @param mapView The map view that is tracking the user's location.
- */
-- (void)mapViewWillStartLocatingUser:(MGLMapView *)mapView;
-
-/**
- Tells the delegate that the map view has stopped tracking the user's location.
- 
- This method is called when the value of the `showsUserLocation` property changes to `NO`.
- 
- @param mapView The map view that is tracking the user's location.
- */
-- (void)mapViewDidStopLocatingUser:(MGLMapView *)mapView;
-
-/**
- Tells the delegate that the location of the user was updated.
- 
- While the `showsUserLocation` property is set to `YES`, this method is called whenever a new location update is received by the map view. This method is also called if the map view's user tracking mode is set to `MGLUserTrackingModeFollowWithHeading` and the heading changes, or if it is set to `MGLUserTrackingModeFollowWithCourse` and the course changes.
- 
- This method is not called if the application is currently running in the background. If you want to receive location updates while running in the background, you must use the Core Location framework.
- 
- @param mapView The map view that is tracking the user's location.
- @param userLocation The location object representing the user's latest location. This property may be `nil`.
- */
-- (void)mapView:(MGLMapView *)mapView didUpdateUserLocation:(nullable MGLUserLocation *)userLocation;
-
-/**
- Tells the delegate that an attempt to locate the user's position failed.
- 
- @param mapView The map view that is tracking the user's location.
- @param error An error object containing the reason why location tracking failed.
- */
-- (void)mapView:(MGLMapView *)mapView didFailToLocateUserWithError:(NSError *)error;
-
-/**
- Tells the delegate that the map view's user tracking mode has changed.
- 
- This method is called after the map view asynchronously changes to reflect the new user tracking mode, for example by beginning to zoom or rotate.
- 
- @param mapView The map view that changed its tracking mode.
- @param mode The new tracking mode.
- @param animated Whether the change caused an animated effect on the map.
- */
-- (void)mapView:(MGLMapView *)mapView didChangeUserTrackingMode:(MGLUserTrackingMode)mode animated:(BOOL)animated;
-
-#pragma mark Managing the Display of Annotations
-
-/**
- Returns an image object to use for the marker for the specified point annotation object.
- 
- @param mapView The map view that requested the annotation image.
- @param annotation The object representing the annotation that is about to be displayed.
- @return The image object to display for the specified annotation or `nil` if you want to display the default marker image.
- */
-- (nullable MGLAnnotationImage *)mapView:(MGLMapView *)mapView imageForAnnotation:(id <MGLAnnotation>)annotation;
-
-/**
- Returns the alpha value to use when rendering a shape annotation. Defaults to `1.0`.
- 
- @param mapView The map view rendering the shape annotation.
- @param annotation The annotation being rendered.
- @return An alpha value between `0` and `1.0`.
- */
-- (CGFloat)mapView:(MGLMapView *)mapView alphaForShapeAnnotation:(MGLShape *)annotation;
-
-/**
- Returns the stroke color to use when rendering a shape annotation. Defaults to the map view’s tint color.
- 
- @param mapView The map view rendering the shape annotation.
- @param annotation The annotation being rendered.
- @return A color to use for the shape outline.
- */
-- (UIColor *)mapView:(MGLMapView *)mapView strokeColorForShapeAnnotation:(MGLShape *)annotation;
-
-/**
- Returns the fill color to use when rendering a polygon annotation. Defaults to the map view’s tint color.
- 
- @param mapView The map view rendering the polygon annotation.
- @param annotation The annotation being rendered.
- @return A color to use for the polygon interior.
- */
-- (UIColor *)mapView:(MGLMapView *)mapView fillColorForPolygonAnnotation:(MGLPolygon *)annotation;
-
-/**
- Returns the line width to use when rendering a polyline annotation. Defaults to `3.0`.
- 
- @param mapView The map view rendering the polygon annotation.
- @param annotation The annotation being rendered.
- @return A line width for the polyline.
- */
-- (CGFloat)mapView:(MGLMapView *)mapView lineWidthForPolylineAnnotation:(MGLPolyline *)annotation;
-
-/**
- Returns a Boolean value indicating whether the annotation is able to display extra information in a callout bubble.
- 
- If the value returned is `YES`, a standard callout bubble is shown when the user taps a selected annotation. The callout uses the title and subtitle text from the associated annotation object. If there is no title text, though, the annotation will not show a callout. The callout also displays any custom callout views returned by the delegate for the left and right callout accessory views.
- 
- If the value returned is `NO`, the value of the title and subtitle strings are ignored.
- 
- @param mapView The map view that requested the annotation callout ability.
- @param annotation The object representing the annotation.
- @return A Boolean indicating whether the annotation should show a callout.
- */
-- (BOOL)mapView:(MGLMapView *)mapView annotationCanShowCallout:(id <MGLAnnotation>)annotation;
-
-/**
- Returns a callout view to display for the specified annotation.
- 
- If this method is present in the delegate, it must return a new instance of a view dedicated to display the callout bubble. It will be configured by the map view. If this method is not present, or if it returns `nil`, a standard, two-line, bubble-like callout view is displayed by default.
- 
- @param mapView The map view that requested the callout view.
- @param annotation The object representing the annotation.
- @return A view conforming to the `MGLCalloutView` protocol, or `nil` to use the default callout view.
- */
-- (nullable UIView <MGLCalloutView> *)mapView:(MGLMapView *)mapView calloutViewForAnnotation:(id <MGLAnnotation>)annotation;
-
-/**
- Returns the view to display on the left side of the standard callout bubble.
- 
- The default value is treated as if `nil`. The left callout view is typically used to display information about the annotation or to link to custom information provided by your application.
- 
- If the view you specify is also a descendant of the `UIControl` class, you can use the map view's delegate to receive notifications when your control is tapped. If it does not descend from `UIControl`, your view is responsible for handling any touch events within its bounds.
- 
- @param mapView The map view presenting the annotation callout.
- @param annotation The object representing the annotation with the callout.
- @return The accessory view to display.
- */
-- (nullable UIView *)mapView:(MGLMapView *)mapView leftCalloutAccessoryViewForAnnotation:(id <MGLAnnotation>)annotation;
-
-/**
- Returns the view to display on the right side of the standard callout bubble.
- 
- The default value is treated is if `nil`. The right callout view is typically used to link to more detailed information about the annotation. A common view to specify for this property is `UIButton` object whose type is set to `UIButtonTypeDetailDisclosure`.
- 
- If the view you specify is also a descendant of the `UIControl` class, you can use the map view's delegate to receive notifications when your control is tapped. If it does not descend from `UIControl`, your view is responsible for handling any touch events within its bounds.
- 
- @param mapView The map view presenting the annotation callout.
- @param annotation The object representing the annotation with the callout.
- @return The accessory view to display.
- */
-- (nullable UIView *)mapView:(MGLMapView *)mapView rightCalloutAccessoryViewForAnnotation:(id <MGLAnnotation>)annotation;
-
-#pragma mark Managing Annotations
-
-/**
- Tells the delegate that the user tapped one of the annotation's accessory buttons.
- 
- Accessory views contain custom content and are positioned on either side of the annotation title text. If a view you specify is a descendant of the `UIControl` class, the map view calls this method as a convenience whenever the user taps your view. You can use this method to respond to taps and perform any actions associated with that control. For example, if your control displayed additional information about the annotation, you could use this method to present a modal panel with that information.
- 
- If your custom accessory views are not descendants of the `UIControl` class, the map view does not call this method.
- 
- @param mapView The map view containing the specified annotation.
- @param annotation The annotation whose button was tapped.
- @param control The control that was tapped.
- */
-- (void)mapView:(MGLMapView *)mapView annotation:(id <MGLAnnotation>)annotation calloutAccessoryControlTapped:(UIControl *)control;
-
-/**
- Tells the delegate that the user tapped on an annotation's callout view.
- 
- @param mapView The map view containing the specified annotation.
- @param annotation The annotation whose callout was tapped.
- */
-- (void)mapView:(MGLMapView *)mapView tapOnCalloutForAnnotation:(id <MGLAnnotation>)annotation;
-
-#pragma mark Selecting Annotations
-
-/**
- Tells the delegate that one of its annotations was selected.
- 
- You can use this method to track changes in the selection state of annotations.
- 
- @param mapView The map view containing the annotation.
- @param annotation The annotation that was selected.
- */
-- (void)mapView:(MGLMapView *)mapView didSelectAnnotation:(id <MGLAnnotation>)annotation;
-
-/**
- Tells the delegate that one of its annotations was deselected.
- 
- You can use this method to track changes in the selection state of annotations.
- 
- @param mapView The map view containing the annotation.
- @param annotation The annotation that was deselected.
- */
-- (void)mapView:(MGLMapView *)mapView didDeselectAnnotation:(id <MGLAnnotation>)annotation;
+- (void)emptyMemoryCache __attribute__((deprecated));
 
 @end
 

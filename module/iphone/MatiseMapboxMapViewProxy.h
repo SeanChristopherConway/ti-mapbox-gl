@@ -14,5 +14,5 @@
 - (void)addAnnotation:(id)args;
 - (void)removeAnnotation:(id)args;
 - (void)drawPolyline:(id)jsonPath;
-
+- (void)setStyleUrl:(id)url;
 @end

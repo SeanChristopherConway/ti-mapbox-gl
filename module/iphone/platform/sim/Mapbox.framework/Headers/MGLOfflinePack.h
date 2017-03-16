@@ -25,8 +25,8 @@ typedef NS_ENUM (NSInteger, MGLOfflinePackState) {
      The pack is incomplete and is not currently downloading.
      
      This is the initial state of a pack that is created using the
-     `-[MGLOfflinePack addPackForRegion:withContext:completionHandler:]` method,
-     as well as after the `-[MGLOfflinePack suspend]` method is
+     `-[MGLOfflineStorage addPackForRegion:withContext:completionHandler:]`
+     method, as well as after the `-[MGLOfflinePack suspend]` method is
      called.
      */
     MGLOfflinePackStateInactive = 1,
@@ -55,14 +55,24 @@ typedef NS_ENUM (NSInteger, MGLOfflinePackState) {
  */
 typedef struct MGLOfflinePackProgress {
     /**
-     The number of resources that have been completely downloaded and are ready
-     to use offline.
+     The number of resources, including tiles, that have been completely
+     downloaded and are ready to use offline.
      */
     uint64_t countOfResourcesCompleted;
     /**
-     The cumulative size of the downloaded resources on disk, measured in bytes.
+     The cumulative size of the downloaded resources on disk, including tiles,
+     measured in bytes.
      */
     uint64_t countOfBytesCompleted;
+    /**
+     The number of tiles that have been completely downloaded and are ready
+     to use offline.
+     */
+    uint64_t countOfTilesCompleted;
+    /**
+     The cumulative size of the downloaded tiles on disk, measured in bytes.
+     */
+    uint64_t countOfTileBytesCompleted;
     /**
      The minimum number of resources that must be downloaded in order to view
      the pack’s full region without any omissions.
@@ -134,11 +144,6 @@ typedef struct MGLOfflinePackProgress {
 /**
  Resumes downloading if the pack is inactive.
  
- A pack resumes asynchronously. To get notified when this pack resumes, observe
- KVO change notifications on this pack’s `state` key path. Alternatively, you
- can add an observer for `MGLOfflinePackProgressChangedNotification`s about this
- pack that come from the default notification center.
- 
  When a pack resumes after being suspended, it may begin by iterating over the
  already downloaded resources. As a result, the `progress` structure’s
  `countOfResourcesCompleted` field may revert to 0 before rapidly returning to
@@ -151,10 +156,9 @@ typedef struct MGLOfflinePackProgress {
 /**
  Temporarily stops downloading if the pack is active.
  
- A pack suspends asynchronously. To get notified when this pack resumes, observe
- KVO change notifications on this pack’s `state` key path. Alternatively, you
- can add an observer for `MGLOfflinePackProgressChangedNotification` about this
- pack that come from the default notification center.
+ A pack suspends asynchronously, so some network requests may be sent after this
+ method is called. Regardless, the `progress` property will not be updated until
+ `-resume` is called.
  
  If the pack previously reached a higher level of progress before being
  suspended, it may wait to suspend until it returns to that level.
@@ -174,27 +178,6 @@ typedef struct MGLOfflinePackProgress {
  come from the default notification center.
  */
 - (void)requestProgress;
-
-@end
-
-/**
- Methods for round-tripping `MGLOfflinePackProgress` values.
- */
-@interface NSValue (MGLOfflinePackAdditions)
-
-/**
- Creates a new value object containing the given `MGLOfflinePackProgress`
- structure.
- 
- @param progress The value for the new object.
- @return A new value object that contains the offline pack progress information.
- */
-+ (NSValue *)valueWithMGLOfflinePackProgress:(MGLOfflinePackProgress)progress;
-
-/**
- The `MGLOfflinePackProgress` structure representation of the value.
- */
-@property (readonly) MGLOfflinePackProgress MGLOfflinePackProgressValue;
 
 @end
 

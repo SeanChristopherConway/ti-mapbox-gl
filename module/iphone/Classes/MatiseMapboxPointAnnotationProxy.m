@@ -17,12 +17,13 @@
     NSString *title = [properties objectForKey:@"title"];
     NSString *subtitle = [properties objectForKey:@"subtitle"];
     NSString *image = [properties objectForKey:@"image"];
+    NSString *site_info = [properties objectForKey:@"markerID"];
     
     // Declare the marker `hello` and set its coordinates, title, and subtitle
     marker = [[MatiseMapboxPointAnnotation alloc] init];
     marker.coordinate = CLLocationCoordinate2DMake(lat, lng);
     marker.title = title;
-    marker.subtitle = subtitle;
+    marker.subtitle = site_info;
     marker.image = image;
 }
 
@@ -31,7 +32,7 @@
     ENSURE_SINGLE_ARG(args, NSDictionary);
     double lat = [TiUtils doubleValue:[args objectForKey:@"lat"]];
     double lng = [TiUtils doubleValue:[args objectForKey:@"lng"]];
-
+    
     marker.coordinate = CLLocationCoordinate2DMake(lat, lng);
 }
 
