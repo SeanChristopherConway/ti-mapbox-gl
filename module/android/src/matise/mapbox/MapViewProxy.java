@@ -104,7 +104,7 @@ public class MapViewProxy extends TiViewProxy {
             // Get access token from AndroidManifest
 
             // Set options
-            MapboxAccountManager.start(proxy.getActivity(), "pk.eyJ1Ijoic2Njb253YXk4IiwiYSI6Ik1kcDBHdHcifQ.37A6SwHIwgHHEABWR5T9lg");
+            MapboxAccountManager.start(proxy.getActivity(), "{enter mapbox api key here}");
             MapboxMapOptions options = new MapboxMapOptions();
             //options.accessToken(accessToken);
             options.styleUrl(styleUrl);
