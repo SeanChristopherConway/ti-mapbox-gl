@@ -94,6 +94,16 @@ public class MapViewProxy extends TiViewProxy {
 
     private HashMap<String, Marker> markers = new HashMap<String, Marker>();
 
+    private static int getStringInt(String str) {
+	     try {
+		       return TiRHelper.getApplicationResource("string." + str);
+	        } catch (ResourceNotFoundException e) {
+		          e.printStackTrace();
+		            return 0;
+	        }
+    }
+
+
     private class MapViewFragment extends TiUIFragment {
         public MapViewFragment(final TiViewProxy proxy, Activity activity) {
             super(proxy, activity);
@@ -104,7 +114,7 @@ public class MapViewProxy extends TiViewProxy {
             // Get access token from AndroidManifest
 
             // Set options
-            MapboxAccountManager.start(proxy.getActivity(), "{enter mapbox api key here}");
+            MapboxAccountManager.start(proxy.getActivity(), proxy.getActivity().getString(getStringInt("access_token")));
             MapboxMapOptions options = new MapboxMapOptions();
             //options.accessToken(accessToken);
             options.styleUrl(styleUrl);
