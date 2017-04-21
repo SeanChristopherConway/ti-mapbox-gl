@@ -1,0 +1,19 @@
+#
+# this is your module manifest and used by Titanium
+# during compilation, packaging, distribution, etc.
+#
+version: 2.0.0
+apiversion: 3
+architectures: armeabi-v7a x86
+description: mapbox
+author: Your Name
+license: Specify your license
+copyright: Copyright (c) 2016 by Your Company
+
+# these should not be edited
+name: mapbox
+moduleid: matise.mapbox
+guid: 37e00c5f-f51c-465c-b82e-ba7f0ed460d7
+platform: android
+minsdk: 6.0.0.GA
+respackage: com.mapbox.mapboxsdk
