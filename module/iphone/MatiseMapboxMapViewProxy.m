@@ -30,9 +30,9 @@ withObject : args waitUntilDone : NO];
 withObject : args waitUntilDone : NO];
 }
 
-- (void)drawPolyline : (id)args {
+- (void)addGeoJsonSource : (id)args {
 // Perform GeoJSON parsing on a background thread
-    [[self view] performSelectorInBackground : @selector(drawPolyline :)
+    [[self view] performSelectorInBackground : @selector(addGeoJsonSource :)
 withObject : args];
 }
 

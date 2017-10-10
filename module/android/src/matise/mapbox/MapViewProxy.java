@@ -32,6 +32,9 @@ import com.mapbox.mapboxsdk.maps.*;
 import com.mapbox.mapboxsdk.location.LocationListener;
 import com.mapbox.mapboxsdk.location.LocationServices;
 import com.mapbox.mapboxsdk.constants.MyLocationTracking;
+import com.mapbox.mapboxsdk.style.sources.GeoJsonSource;
+import com.mapbox.mapboxsdk.style.sources.VectorSource;
+import com.mapbox.services.commons.geojson.FeatureCollection;
 //titanium imports
 import org.appcelerator.kroll.KrollDict;
 import org.appcelerator.kroll.KrollModule;
@@ -91,16 +94,17 @@ public class MapViewProxy extends TiViewProxy {
     private float lat = 0;
     private float lng = 0;
     private int zoom = 13;
+    private boolean userLocation = true;
 
     private HashMap<String, Marker> markers = new HashMap<String, Marker>();
 
     private static int getStringInt(String str) {
-	     try {
-		       return TiRHelper.getApplicationResource("string." + str);
-	        } catch (ResourceNotFoundException e) {
-		          e.printStackTrace();
-		            return 0;
-	        }
+        try {
+            return TiRHelper.getApplicationResource("string." + str);
+        } catch (ResourceNotFoundException e) {
+            e.printStackTrace();
+            return 0;
+        }
     }
 
 
@@ -138,15 +142,16 @@ public class MapViewProxy extends TiViewProxy {
                         // MapboxModule.getInstance().map = _mapboxMap;
 
                         // Customize map with markers, polylines, etc.
+                        if(proxy!= null){
+                            proxy.fireEvent("mapReady",null);
+                        }
+                        mapboxMap.setMyLocationEnabled(userLocation);
 
-                        KrollDict props = new KrollDict();
-                        proxy.fireEvent("mapReady", props);
-
-                        mapboxMap.setMyLocationEnabled(true);
-                        mapboxMap.getTrackingSettings().setMyLocationTrackingMode(MyLocationTracking.TRACKING_FOLLOW);
                         //mapboxMap.getTrackingSettings().setDismissAllTrackingOnGesture(false);
-                        mapboxMap.getMyLocation();
-
+                        /*if(userLocation==true){
+                         //mapboxMap.getMyLocation();
+                         //mapboxMap.getTrackingSettings().setMyLocationTrackingMode(MyLocationTracking.TRACKING_FOLLOW);
+                         }*/
                         mapboxMap.setOnMapClickListener(new MapboxMap.OnMapClickListener() {
                             @Override
                             public void onMapClick(LatLng point) {
@@ -167,6 +172,20 @@ public class MapViewProxy extends TiViewProxy {
 
                             }
                         });
+
+                        /*mapboxMap.setOnCameraChangeListener(new MapboxMap.OnCameraChangeListener() {
+                         @Override
+                         public void onCameraChange(CameraPosition position) {
+
+                         try {
+                         customCallBack(position);
+                         } catch (Error err) {
+                         System.out.println("Error on map zooming is: "
+                         + err.toString());
+                         }
+                         }
+                         });*/
+
 
                         mapboxMap.setOnMarkerClickListener(new MapboxMap.OnMarkerClickListener() {
                             @Override
@@ -302,7 +321,6 @@ public class MapViewProxy extends TiViewProxy {
                                                     .title(annotationTitle)
                                                     .snippet(annotationDescription)
                                                     .icon(icon)
-
                                                     );
 
                 markers.put(id, marker);
@@ -437,30 +455,38 @@ public class MapViewProxy extends TiViewProxy {
             }
         }
 
+        /*protected void customCallBack(CameraPosition position) {
+         if (proxy.hasListeners("zoom")) {
+         KrollDict props = new KrollDict();
+         props.put("zoom", position.zoom);
+         proxy.fireEvent("zoom", props);
+         }
+         }*/
+
         protected void customCallBack(LatLng point) {
 
-            KrollDict props = new KrollDict();
-
-            /*if (renderedFeatures.size() > 0) {
-             String featureId = renderedFeatures.get(0).getId();
-             //props.put("feature", featureId);
-             System.out.println("id of feature is: "+featureId);
-             }*/
-
-            props.put("lat", point.getLatitude());
-            props.put("lng", point.getLongitude());
-            proxy.fireEvent("singleTapOnMap", props);
+            if (proxy.hasListeners("singleTapOnMap")) {
+                KrollDict props = new KrollDict();
+                props.put("lat", point.getLatitude());
+                props.put("lng", point.getLongitude());
+                proxy.fireEvent("singleTapOnMap", props);
+            }
 
         }
 
         protected void customCallBack(LatLng point,String info) {
 
-            KrollDict props = new KrollDict();
-            props.put("lat", point.getLatitude());
-            props.put("lng", point.getLongitude());
-            props.put("site_info", info);
-            proxy.fireEvent("tapOnAnnotation", props);
+            if (proxy.hasListeners("tapOnAnnotation")) {
+                KrollDict props = new KrollDict();
+                props.put("lat", point.getLatitude());
+                props.put("lng", point.getLongitude());
+                props.put("site_info", info);
+                proxy.fireEvent("tapOnAnnotation", props);
+            }
+
         }
+
+
     }
 
     // Constructor
@@ -495,6 +521,9 @@ public class MapViewProxy extends TiViewProxy {
 
         if (options.containsKey("zoom")) {
             zoom = TiConvert.toInt(options.get("zoom"));
+        }
+        if (options.containsKey("userLocation")) {
+            userLocation = TiConvert.toBoolean(options.get("userLocation"));
         }
     }
 
@@ -605,6 +634,33 @@ public class MapViewProxy extends TiViewProxy {
 
 
 
+    @Kroll.method
+    public void updateGeoJsonLayer(final Object json){
+        if (mapboxMap != null) {
+
+          try {
+            HashMap<String, Object> jsonArgs = (HashMap<String, Object>) json;
+
+            if (jsonArgs.containsKey("layer")&&jsonArgs.containsKey("geojson")) {
+                String layer = (TiConvert.toString(jsonArgs, "layer"));
+                String geoJsonString = (TiConvert.toString(jsonArgs, "geojson"));
+                FeatureCollection featureCollection = FeatureCollection.fromJson(geoJsonString);
+                GeoJsonSource source = mapboxMap.getSourceAs(layer);
+                if (source != null) {
+                  source.setGeoJson(featureCollection);
+                }else{
+                    System.out.println("null source but geojson is: "+jsonArgs.get("geojson").toString());
+                }
+            }
+          } catch (Exception e) {
+              e.printStackTrace();
+              System.out.println("Error on geojson update is: "
+                                 + e.toString());
+          }
+
+        }
+
+    }
 
     @Kroll.method
     public void animateCameraTo(final Object json){

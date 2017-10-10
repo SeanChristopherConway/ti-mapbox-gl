@@ -13,6 +13,6 @@
 - (void)setCenterCoordinate:(id)args;
 - (void)addAnnotation:(id)args;
 - (void)removeAnnotation:(id)args;
-- (void)drawPolyline:(id)jsonPath;
+- (void)addGeoJsonSource:(id)args;
 - (void)setStyleUrl:(id)url;
 @end
