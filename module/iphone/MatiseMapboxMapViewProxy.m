@@ -30,9 +30,9 @@ withObject : args waitUntilDone : NO];
 withObject : args waitUntilDone : NO];
 }
 
-- (void)addGeoJsonSource : (id)args {
+- (void)updateGeoJsonLayer : (id)args {
 // Perform GeoJSON parsing on a background thread
-    [[self view] performSelectorInBackground : @selector(addGeoJsonSource :)
+    [[self view] performSelectorInBackground : @selector(updateGeoJsonLayer :)
 withObject : args];
 }
 

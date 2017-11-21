@@ -228,24 +228,30 @@
 }
 
 
--(void)addGeoJsonSource:(id)args
+-(void)updateGeoJsonLayer:(id)args
 {
     ENSURE_SINGLE_ARG(args, NSDictionary);
     
-    NSString *querySourceID = [TiUtils stringValue:[args objectForKey:@"layer"]];
+    NSString *querySourceID = [TiUtils stringValue:[args objectForKey:@"source"]];
+    NSString *querySourceLayer = [TiUtils stringValue:[args objectForKey:@"layer"]];
     NSString *jsonPath = [TiUtils stringValue:[args objectForKey:@"geojson"]];
     
-    // Load and serialize the GeoJSON into a dictionary filled with properly-typed objects
-    NSDictionary *jsonDict = [NSJSONSerialization JSONObjectWithData:[jsonPath dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+    // Convert the file contents to a shape collection feature object
+    NSData *data = [[NSData alloc] initWithContentsOfFile:jsonPath];
+    MGLShape *features = [MGLShape shapeWithData:data encoding:NSUTF8StringEncoding error:NULL];
     
     MGLSource *source = [mapView.style sourceWithIdentifier:querySourceID];
-    if (source) {
+    MGLStyleLayer *layer = [mapView.style layerWithIdentifier:querySourceLayer];
+    if (source  && layer) {
+        [mapView.style removeLayer:layer];
         [mapView.style removeSource:source];
     }
     
     // Load the `features` dictionary for iteration
-    MGLShapeSource *shpsource = [[MGLShapeSource alloc] initWithIdentifier:querySourceID features:jsonDict[@"features"] options:nil];
+    MGLShapeSource *shpsource = [[MGLShapeSource alloc] initWithIdentifier:querySourceID features:features options:nil];
     [mapView.style addSource:shpsource];
+    MGLStyleLayer *nlayer = [[MGLStyleLayer alloc] initWithIdentifier:querySourceLayer source:shpsource];
+    [mapView.style addLayer:nlayer];
 }
 
 

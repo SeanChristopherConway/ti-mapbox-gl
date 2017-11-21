@@ -18,8 +18,9 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Message;
 import android.support.v4.app.Fragment;
+import android.content.Context;
+import android.graphics.Canvas;
 //mapbox imports
-import com.mapbox.mapboxsdk.MapboxAccountManager;
 import com.mapbox.mapboxsdk.annotations.Icon;
 import com.mapbox.mapboxsdk.annotations.IconFactory;
 import com.mapbox.mapboxsdk.annotations.MarkerOptions;
@@ -29,8 +30,8 @@ import com.mapbox.mapboxsdk.camera.CameraUpdateFactory;
 import com.mapbox.mapboxsdk.constants.Style;
 import com.mapbox.mapboxsdk.geometry.LatLng;
 import com.mapbox.mapboxsdk.maps.*;
-import com.mapbox.mapboxsdk.location.LocationListener;
-import com.mapbox.mapboxsdk.location.LocationServices;
+import com.mapbox.mapboxsdk.location.LocationSource;
+import com.mapbox.mapboxsdk.Mapbox;
 import com.mapbox.mapboxsdk.constants.MyLocationTracking;
 import com.mapbox.mapboxsdk.style.sources.GeoJsonSource;
 import com.mapbox.mapboxsdk.style.sources.VectorSource;
@@ -56,8 +57,10 @@ import org.appcelerator.titanium.TiBlob;
 
 // fragment test
 
+
 @Kroll.proxy(creatableInModule = MapboxModule.class)
 public class MapViewProxy extends TiViewProxy {
+
     // Standard Debugging variables
     private static final String TAG = "MapViewProxy";
     private static final boolean DBG = TiConfig.LOGD;
@@ -106,6 +109,40 @@ public class MapViewProxy extends TiViewProxy {
             return 0;
         }
     }
+    
+    /**
+     * Demonstrates converting any Drawable to an Icon, for use as a marker icon.
+     */
+    private static Icon drawableToIcon(Context context,String imageUrl) {
+        
+        Bitmap bitmap = null;
+        try {
+            
+            if (imageUrl != null) {
+                BitmapFactory.Options options = new BitmapFactory.Options();
+                options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+                bitmap = BitmapFactory.decodeResource(context
+                                                      .getResources(), TiRHelper
+                                                      .getApplicationResource("drawable." + imageUrl),
+                                                      options);
+                Drawable d = new BitmapDrawable(context.getApplicationContext().getResources(), bitmap);
+                
+                
+                Canvas canvas = new Canvas(bitmap);
+                d.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+                //DrawableCompat.setTint(vectorDrawable, colorRes);
+                d.draw(canvas);
+                return IconFactory.getInstance(context).fromBitmap(bitmap);
+                
+            }
+            
+        } catch (ResourceNotFoundException e1) {
+            // TODO Auto-generated catch block
+            e1.printStackTrace();
+        }
+        return null;
+
+    }
 
 
     private class MapViewFragment extends TiUIFragment {
@@ -118,7 +155,8 @@ public class MapViewProxy extends TiViewProxy {
             // Get access token from AndroidManifest
 
             // Set options
-            MapboxAccountManager.start(proxy.getActivity(), proxy.getActivity().getString(getStringInt("access_token")));
+            //MapboxAccountManager.start(proxy.getActivity(), proxy.getActivity().getString(getStringInt("access_token"))); //DEPRECATED
+            Mapbox.getInstance(proxy.getActivity(),proxy.getActivity().getString(getStringInt("access_token")));
             MapboxMapOptions options = new MapboxMapOptions();
             //options.accessToken(accessToken);
             options.styleUrl(styleUrl);
@@ -283,38 +321,11 @@ public class MapViewProxy extends TiViewProxy {
             LatLng latlong = new LatLng(_lat, _lng);
 
 
-            Bitmap bitmap = null;
-            try {
-
-                if (imageUrl != null) {
-                    BitmapFactory.Options options = new BitmapFactory.Options();
-                    options.inPreferredConfig = Bitmap.Config.ARGB_8888;
-                    bitmap = BitmapFactory.decodeResource(proxy.getActivity()
-                                                          .getResources(), TiRHelper
-                                                          .getApplicationResource("drawable." + imageUrl),
-                                                          options);
-
-                }
-
-            } catch (ResourceNotFoundException e1) {
-                // TODO Auto-generated catch block
-                e1.printStackTrace();
-            }
 
 
+            Icon icon = drawableToIcon(proxy.getActivity(),imageUrl);
 
-            Icon icon = null;
-
-            if (bitmap != null) {
-                Drawable d = new BitmapDrawable(proxy.getActivity()
-                                                .getApplicationContext().getResources(), bitmap);
-                IconFactory iconFactory = IconFactory.getInstance(proxy.getActivity());
-                icon = iconFactory.fromDrawable(d);
-
-            }
-
-
-
+            
             if (mapboxMap != null) {
                 Marker marker = mapboxMap.addMarker(new MarkerOptions()
                                                     .position(latlong)
@@ -373,34 +384,7 @@ public class MapViewProxy extends TiViewProxy {
                 LatLng latlong = new LatLng(_lat, _lng);
 
 
-                Bitmap bitmap = null;
-                try {
-
-                    if (imageUrl != null) {
-                        BitmapFactory.Options options = new BitmapFactory.Options();
-                        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
-                        bitmap = BitmapFactory.decodeResource(proxy.getActivity()
-                                                              .getResources(), TiRHelper
-                                                              .getApplicationResource("drawable." + imageUrl),
-                                                              options);
-
-                    }
-
-                } catch (ResourceNotFoundException e1) {
-                    // TODO Auto-generated catch block
-                    e1.printStackTrace();
-                }
-
-
-                Icon icon = null;
-
-                if (bitmap != null) {
-                    Drawable d = new BitmapDrawable(proxy.getActivity()
-                                                    .getApplicationContext().getResources(), bitmap);
-                    IconFactory iconFactory = IconFactory.getInstance(proxy.getActivity());
-                    icon = iconFactory.fromDrawable(d);
-
-                }
+                Icon icon = drawableToIcon(proxy.getActivity(),imageUrl);
 
                 if (mapboxMap != null) {
                     Marker marker = mapboxMap.addMarker(new MarkerOptions()
@@ -642,10 +626,10 @@ public class MapViewProxy extends TiViewProxy {
             HashMap<String, Object> jsonArgs = (HashMap<String, Object>) json;
 
             if (jsonArgs.containsKey("layer")&&jsonArgs.containsKey("geojson")) {
-                String layer = (TiConvert.toString(jsonArgs, "layer"));
+                String source = (TiConvert.toString(jsonArgs, "source"));
                 String geoJsonString = (TiConvert.toString(jsonArgs, "geojson"));
                 FeatureCollection featureCollection = FeatureCollection.fromJson(geoJsonString);
-                GeoJsonSource source = mapboxMap.getSourceAs(layer);
+                GeoJsonSource source = mapboxMap.getSourceAs(source);
                 if (source != null) {
                   source.setGeoJson(featureCollection);
                 }else{

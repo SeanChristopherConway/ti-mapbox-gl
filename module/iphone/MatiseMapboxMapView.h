@@ -15,6 +15,6 @@
 - (void)setCenterCoordinate:(id)args;
 - (void)addAnnotation:(id)args;
 - (void)removeAnnotation:(id)args;
-- (void)addGeoJsonSource:(id)args;
+- (void)updateGeoJsonLayer:(id)args;
 - (void)setStyleUrl:(id)url;
 @end
